@@ -1,17 +1,19 @@
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = game:GetService("Players").LocalPlayer
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 
 local Locations = workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("Locations")
 
--- ==========================================
--- 1. XÁC ĐỊNH SỐ RƯỢNG THEO SEA (BLOX FRUITS)
--- ==========================================
+-- =======================================================
+-- 1. NHẬN DIỆN SEA VÀ SET SỐ RƯƠNG (CHUẨN ID BLOX FRUITS)
+-- =======================================================
 local PlaceId = game.PlaceId
-local MaxChests = 40 -- Mặc định Sea 1
-if PlaceId == 4442272183 then
+local MaxChests = 40 -- Mặc định
+
+if PlaceId == 2753915549 then
+    MaxChests = 40 -- Sea 1
+elseif PlaceId == 4442272183 then
     MaxChests = 60 -- Sea 2
 elseif PlaceId == 7449423635 then
     MaxChests = 80 -- Sea 3
@@ -19,89 +21,75 @@ end
 
 local ChestsCollected = 0
 local CollectedRecords = {}
+local IsHopping = false
 
--- ==========================================
--- 2. TẠO GIAO DIỆN (GUI)
--- ==========================================
+-- =======================================================
+-- 2. TẠO GUI ZERO MANAGER CHUYÊN NGHIỆP
+-- =======================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ZeroManagerGUI"
-ScreenGui.ResetOnSpawn = false
--- Dùng gethui() nếu đang dùng executor hỗ trợ để chống phát hiện, nếu không thì để vào CoreGui
 ScreenGui.Parent = (gethui and gethui()) or CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 300, 0, 100)
 MainFrame.Position = UDim2.new(0.5, -150, 0, 20)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-MainFrame.BackgroundTransparency = 0.2
-MainFrame.BorderSizePixel = 0
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BackgroundTransparency = 0.1
+MainFrame.BorderSizePixel = 2
+MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 0)
 MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0.5, 0)
-TitleLabel.Position = UDim2.new(0, 0, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Zero Manager"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Màu Vàng
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Chữ màu vàng to
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextScaled = true
+TitleLabel.TextSize = 26
 TitleLabel.Parent = MainFrame
 
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0.5, 0)
 StatusLabel.Position = UDim2.new(0, 0, 0.5, 0)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Status: 0 / " .. MaxChests .. " rương đã nhặt"
-StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- Màu Xanh Lá
+StatusLabel.Text = "Status: 0 / " .. MaxChests
+StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- Chữ màu xanh
 StatusLabel.Font = Enum.Font.GothamSemibold
-StatusLabel.TextSize = 20
+StatusLabel.TextSize = 18
 StatusLabel.Parent = MainFrame
 
--- ==========================================
--- 3. LOGIC HOP SERVER
--- ==========================================
+-- =======================================================
+-- 3. HÀM HOP SERVER (TÌM SERVER CHƯA FULL)
+-- =======================================================
 local function HopServer()
-    StatusLabel.Text = "Status: Hop server..."
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100) -- Đổi màu để dễ chú ý
+    if IsHopping then return end
+    IsHopping = true
+    StatusLabel.Text = "Status: hop sever"
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
     
-    local url = "https://games.roblox.com/v1/games/" .. tostring(PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
-    
-    local function ExecuteHop()
-        local success, result = pcall(function()
-            return game:HttpGet(url)
-        end)
-        
-        if success then
-            local data = HttpService:JSONDecode(result)
-            if data and data.data then
-                for _, server in pairs(data.data) do
-                    -- Tìm server không phải server hiện tại và chưa full người
-                    if type(server) == "table" and server.id ~= game.JobId and server.playing < server.maxPlayers then
-                        pcall(function()
+    task.spawn(function()
+        while task.wait(3) do
+            pcall(function()
+                local url = "https://games.roblox.com/v1/games/" .. tostring(PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
+                local result = game:HttpGet(url)
+                local data = HttpService:JSONDecode(result)
+                if data and data.data then
+                    for _, server in pairs(data.data) do
+                        -- Tìm server khác server hiện tại và chưa full (maxPlayers - 1 để tránh lỗi full ảo)
+                        if type(server) == "table" and server.id ~= game.JobId and server.playing < (server.maxPlayers - 1) then
                             TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LocalPlayer)
-                        end)
-                        task.wait(2) -- Đợi 2 giây xem có dịch chuyển thành công không
+                            task.wait(5)
+                        end
                     end
                 end
-            end
-        end
-    end
-
-    -- Lặp lại việc tìm server cho đến khi thoát hẳn game
-    task.spawn(function()
-        while task.wait(5) do
-            ExecuteHop()
+            end)
         end
     end)
 end
 
--- ==========================================
--- 4. LOGIC GỐC CỦA BẠN (Đã tích hợp đếm rương)
--- ==========================================
+-- =======================================================
+-- 4. LOGIC GỐC CỦA BẠN (ĐƯỢC GIỮ NGUYÊN HOÀN TOÀN)
+-- =======================================================
 local function getCharacter()
     if not LocalPlayer.Character then
         LocalPlayer.CharacterAdded:Wait()
@@ -110,7 +98,7 @@ local function getCharacter()
     return LocalPlayer.Character
 end
 
-local function DistanceFromPlrSort(ObjectList)
+local function DistanceFromPlrSort(ObjectList: table)
     local RootPart = getCharacter().LowerTorso
     table.sort(ObjectList, function(ChestA, ChestB)
         local RootPos = RootPart.Position
@@ -140,7 +128,7 @@ local function getChestsSorted()
     return Chests
 end
 
-local function toggleNoclip(Toggle)
+local function toggleNoclip(Toggle: boolean)
     for _, v in pairs(getCharacter():GetChildren()) do
         if v:IsA("BasePart") then
             v.CanCollide = not Toggle
@@ -148,73 +136,54 @@ local function toggleNoclip(Toggle)
     end
 end
 
-local function Teleport(Goal)
+local function Teleport(Goal: CFrame)
     local RootPart = getCharacter().HumanoidRootPart
     toggleNoclip(true)
     RootPart.CFrame = Goal + Vector3.new(0, 3, 0)
     toggleNoclip(false)
 end
 
-local isHopping = false
-
 local function startFarm()
     task.spawn(function()
         while task.wait() do
-            if isHopping then return end
+            if IsHopping then return end -- Nếu đang hop server thì ngưng farm
             
-            -- Kiểm tra xem đã đủ số lượng rương chưa
-            if ChestsCollected >= MaxChests then
-                isHopping = true
-                HopServer()
-                break
-            end
-
             local Chests = getChestsSorted()
             if #Chests > 0 then
-                local TargetChest = Chests[1]
-                Teleport(TargetChest.CFrame)
+                local currentChest = Chests[1]
+                Teleport(currentChest.CFrame)
                 
-                -- Xử lý đếm rương
-                if TargetChest and TargetChest.Parent then
-                    local dist = (getCharacter().HumanoidRootPart.Position - TargetChest.Position).Magnitude
-                    if dist < 10 then -- Nếu đứng đủ gần rương
-                        task.wait(0.1)
-                        -- Nếu rương mất TouchInterest (đã bị nhặt) và chưa được lưu trong record
-                        if not TargetChest:FindFirstChild("TouchInterest") and not CollectedRecords[TargetChest] then
-                            CollectedRecords[TargetChest] = true
-                            ChestsCollected = ChestsCollected + 1
-                            StatusLabel.Text = "Status: " .. tostring(ChestsCollected) .. " / " .. tostring(MaxChests) .. " rương đã nhặt"
-                        end
+                -- Đếm rương (Chỉ thêm đoạn này, không đổi gì của hàm Teleport)
+                task.wait(0.1) 
+                if not currentChest:FindFirstChild("TouchInterest") and not CollectedRecords[currentChest] then
+                    CollectedRecords[currentChest] = true
+                    ChestsCollected = ChestsCollected + 1
+                    StatusLabel.Text = "Status: " .. ChestsCollected .. " / " .. MaxChests
+                    
+                    if ChestsCollected >= MaxChests then
+                        HopServer()
                     end
                 end
             else
-                -- Nếu trên map đã hết sạch rương mà chưa đạt target thì cũng Hop Server
-                isHopping = true
+                -- Đã nhặt hết rương trên map hiện tại thì cũng hop server luôn
                 HopServer()
-                break
             end
         end
     end)
 end
 
--- Tự động vào team Marines (giữ nguyên logic của bạn)
 task.spawn(function()
     local rs = game:GetService("ReplicatedStorage")
     while task.wait(5) do
         pcall(function()
-            if rs:FindFirstChild("Remotes") and rs.Remotes:FindFirstChild("CommF_") then
-                rs.Remotes.CommF_:InvokeServer("SetTeam","Marines")
-            end
+            rs.Remotes.CommF_:InvokeServer("SetTeam","Marines")
         end)
     end
 end)
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1) 
-    if not isHopping then
-        startFarm()
-    end
+    startFarm()
 end)
 
--- Bắt đầu chạy
 startFarm()
