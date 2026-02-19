@@ -9,7 +9,7 @@ local CoreGui = game:GetService("CoreGui")
 local PlaceId = game.PlaceId
 local MaxChests = 40 
 
--- Kiểm tra chính xác ID để set MaxChests
+-- Sử dụng logic so sánh trực tiếp để tránh lỗi nhận diện sai Sea
 if PlaceId == 7449423635 then
     MaxChests = 80 -- Sea 3
 elseif PlaceId == 4442272183 then
@@ -17,13 +17,14 @@ elseif PlaceId == 4442272183 then
 elseif PlaceId == 2753915549 then
     MaxChests = 40 -- Sea 1
 else
-    MaxChests = 50 -- Mặc định nếu ID khác
+    MaxChests = 40 -- Mặc định Sea 1 nếu không xác định được
 end
 
 local ChestsCollected = 0
 local CollectedRecords = {}
 local IsHopping = false
 local FarmingConnection = nil
+local StopByItem = false -- Biến đánh dấu dừng khi nhận được đồ
 
 -- =======================================================
 -- 2. GUI ZERO MANAGER
@@ -60,10 +61,32 @@ StatusLabel.TextSize = 20
 StatusLabel.Parent = MainFrame
 
 -- =======================================================
--- 3. HÀM HỖ TRỢ & LOGIC GỐC
+-- 3. LOGIC DỪNG KHI NHẬN ĐƯỢC ĐỒ (NEW)
+-- =======================================================
+local function OnItemAdded(item)
+    if item:IsA("Tool") or item:IsA("SpecialItem") then
+        -- Danh sách các thứ bỏ qua (Vũ khí cơ bản)
+        local ignoreList = {"Combat", "Sword", "Gun", "Fruit"}
+        for _, name in pairs(ignoreList) do
+            if item.Name:find(name) then return end
+        end
+        
+        -- Nếu nhận được item lạ (Chén thánh, Nắm đấm bóng tối, vật phẩm hiếm...)
+        StopByItem = true
+        FarmingConnection = false
+        StatusLabel.Text = "ITEM FOUND: " .. item.Name:upper()
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        warn("Dừng Farm vì đã tìm thấy vật phẩm: " .. item.Name)
+    end
+end
+
+LocalPlayer.Backpack.ChildAdded:Connect(OnItemAdded)
+
+-- =======================================================
+-- 4. HÀM HỖ TRỢ & LOGIC GỐC
 -- =======================================================
 local function HopServer()
-    if IsHopping then return end
+    if IsHopping or StopByItem then return end
     IsHopping = true
     StatusLabel.Text = "Status: Hopping..."
     StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
@@ -138,28 +161,27 @@ local function Teleport(Goal)
     if char and char:FindFirstChild("HumanoidRootPart") then
         toggleNoclip(true)
         char.HumanoidRootPart.CFrame = Goal + Vector3.new(0, 3, 0)
-        -- Tắt noclip sau một khoảng ngắn để tránh kẹt sàn
         task.delay(0.1, function() toggleNoclip(false) end)
     end
 end
 
 -- =======================================================
--- 4. VÒNG LẶP FARM CHÍNH
+-- 5. VÒNG LẶP FARM CHÍNH (DỪNG KHI CÓ ĐỒ)
 -- =======================================================
 local function startFarm()
-    -- Hủy loop cũ nếu có để tránh chạy đè khi reset
     if FarmingConnection then FarmingConnection = false end
+    if StopByItem then return end -- Không chạy nếu đã tìm thấy đồ
+    
     FarmingConnection = true
     
     task.spawn(function()
         while FarmingConnection and task.wait() do
-            if IsHopping then break end
+            if IsHopping or StopByItem then break end
             
             local Chests = getChestsSorted()
             if #Chests > 0 then
                 local currentChest = Chests[1]
                 
-                -- Logic đếm và cập nhật UI
                 if not CollectedRecords[currentChest] then
                     CollectedRecords[currentChest] = true
                     ChestsCollected = ChestsCollected + 1
@@ -172,7 +194,7 @@ local function startFarm()
                 end
 
                 Teleport(currentChest.CFrame)
-                task.wait(0.08) -- Tốc độ nhặt
+                task.wait(0.08)
             else
                 HopServer()
                 break
@@ -182,22 +204,23 @@ local function startFarm()
 end
 
 -- =======================================================
--- 5. KHỞI CHẠY & TỰ ĐỘNG CHỌN TEAM
+-- 6. KHỞI CHẠY & TỰ ĐỘNG CHỌN TEAM
 -- =======================================================
 task.spawn(function()
     local rs = game:GetService("ReplicatedStorage")
     while task.wait(5) do
+        if StopByItem then break end
         pcall(function()
             rs.Remotes.CommF_:InvokeServer("SetTeam", "Marines")
         end)
     end
 end)
 
--- Xử lý khi nhân vật Reset/Spawn lại
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
-    startFarm()
+    if not StopByItem then
+        startFarm()
+    end
 end)
 
--- Chạy lần đầu
 startFarm()
