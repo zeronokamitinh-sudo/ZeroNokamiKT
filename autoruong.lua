@@ -6,17 +6,18 @@ local CoreGui = game:GetService("CoreGui")
 local Locations = workspace:FindFirstChild("_WorldOrigin") and workspace._WorldOrigin:FindFirstChild("Locations")
 
 -- =======================================================
--- 1. NHẬN DIỆN SEA VÀ SET SỐ RƯƠNG (CHUẨN ID BLOX FRUITS)
+-- 1. NHẬN DIỆN SEA CHUẨN (FIXED)
 -- =======================================================
 local PlaceId = game.PlaceId
-local MaxChests = 40 -- Mặc định
+local MaxChests = 40 
 
-if PlaceId == 2753915549 then
-    MaxChests = 40 -- Sea 1
+-- Kiểm tra ID chính xác cho từng Sea
+if PlaceId == 7449423635 then
+    MaxChests = 80 -- Sea 3
 elseif PlaceId == 4442272183 then
     MaxChests = 60 -- Sea 2
-elseif PlaceId == 7449423635 then
-    MaxChests = 80 -- Sea 3
+elseif PlaceId == 2753915549 then
+    MaxChests = 40 -- Sea 1
 end
 
 local ChestsCollected = 0
@@ -24,7 +25,7 @@ local CollectedRecords = {}
 local IsHopping = false
 
 -- =======================================================
--- 2. TẠO GUI ZERO MANAGER CHUYÊN NGHIỆP
+-- 2. GUI ZERO MANAGER (MÀU VÀNG & XANH)
 -- =======================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ZeroManagerGUI"
@@ -33,8 +34,7 @@ ScreenGui.Parent = (gethui and gethui()) or CoreGui
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 300, 0, 100)
 MainFrame.Position = UDim2.new(0.5, -150, 0, 20)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MainFrame.BackgroundTransparency = 0.1
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.BorderSizePixel = 2
 MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 0)
 MainFrame.Parent = ScreenGui
@@ -43,9 +43,9 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0.5, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Zero Manager"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Chữ màu vàng to
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 26
+TitleLabel.TextSize = 28
 TitleLabel.Parent = MainFrame
 
 local StatusLabel = Instance.new("TextLabel")
@@ -53,32 +53,30 @@ StatusLabel.Size = UDim2.new(1, 0, 0.5, 0)
 StatusLabel.Position = UDim2.new(0, 0, 0.5, 0)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Status: 0 / " .. MaxChests
-StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0) -- Chữ màu xanh
+StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
 StatusLabel.Font = Enum.Font.GothamSemibold
-StatusLabel.TextSize = 18
+StatusLabel.TextSize = 20
 StatusLabel.Parent = MainFrame
 
 -- =======================================================
--- 3. HÀM HOP SERVER (TÌM SERVER CHƯA FULL)
+-- 3. HÀM HOP SERVER (TÌM SERVER TRỐNG)
 -- =======================================================
 local function HopServer()
     if IsHopping then return end
     IsHopping = true
     StatusLabel.Text = "Status: hop sever"
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
     
     task.spawn(function()
-        while task.wait(3) do
+        while task.wait(2) do
             pcall(function()
                 local url = "https://games.roblox.com/v1/games/" .. tostring(PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
                 local result = game:HttpGet(url)
                 local data = HttpService:JSONDecode(result)
                 if data and data.data then
                     for _, server in pairs(data.data) do
-                        -- Tìm server khác server hiện tại và chưa full (maxPlayers - 1 để tránh lỗi full ảo)
-                        if type(server) == "table" and server.id ~= game.JobId and server.playing < (server.maxPlayers - 1) then
+                        if server.id ~= game.JobId and server.playing < (server.maxPlayers - 1) then
                             TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LocalPlayer)
-                            task.wait(5)
                         end
                     end
                 end
@@ -88,7 +86,7 @@ local function HopServer()
 end
 
 -- =======================================================
--- 4. LOGIC GỐC CỦA BẠN (ĐƯỢC GIỮ NGUYÊN HOÀN TOÀN)
+-- 4. GIỮ NGUYÊN LOGIC GỐC CỦA BẠN
 -- =======================================================
 local function getCharacter()
     if not LocalPlayer.Character then
@@ -146,32 +144,35 @@ end
 local function startFarm()
     task.spawn(function()
         while task.wait() do
-            if IsHopping then return end -- Nếu đang hop server thì ngưng farm
+            if IsHopping then return end
             
             local Chests = getChestsSorted()
             if #Chests > 0 then
                 local currentChest = Chests[1]
-                Teleport(currentChest.CFrame)
                 
-                -- Đếm rương (Chỉ thêm đoạn này, không đổi gì của hàm Teleport)
-                task.wait(0.1) 
-                if not currentChest:FindFirstChild("TouchInterest") and not CollectedRecords[currentChest] then
+                -- LOGIC ĐẾM TỨC THÌ: Đánh dấu rương ngay khi chuẩn bị Teleport tới
+                if not CollectedRecords[currentChest] then
                     CollectedRecords[currentChest] = true
                     ChestsCollected = ChestsCollected + 1
                     StatusLabel.Text = "Status: " .. ChestsCollected .. " / " .. MaxChests
                     
                     if ChestsCollected >= MaxChests then
                         HopServer()
+                        break
                     end
                 end
+
+                Teleport(currentChest.CFrame)
+                task.wait(0.05) -- Tốc độ nhặt cực nhanh
             else
-                -- Đã nhặt hết rương trên map hiện tại thì cũng hop server luôn
                 HopServer()
+                break
             end
         end
     end)
 end
 
+-- Team Marines Auto
 task.spawn(function()
     local rs = game:GetService("ReplicatedStorage")
     while task.wait(5) do
