@@ -2,94 +2,88 @@ local LocalPlayer = game:GetService("Players").LocalPlayer
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- =======================================================
--- 1. NHẬN DIỆN SEA CHUẨN (FIXED)
+-- 1. CẤU HÌNH SEA & GIỚI HẠN
 -- =======================================================
 local PlaceId = game.PlaceId
 local MaxChests = 40 
 
--- Sử dụng logic so sánh trực tiếp để tránh lỗi nhận diện sai Sea
 if PlaceId == 7449423635 then
     MaxChests = 80 -- Sea 3
 elseif PlaceId == 4442272183 then
     MaxChests = 60 -- Sea 2
 elseif PlaceId == 2753915549 then
     MaxChests = 40 -- Sea 1
-else
-    MaxChests = 40 -- Mặc định Sea 1 nếu không xác định được
 end
 
 local ChestsCollected = 0
 local CollectedRecords = {}
 local IsHopping = false
-local FarmingConnection = nil
-local StopByItem = false -- Biến đánh dấu dừng khi nhận được đồ
+local StopByItem = false 
 
 -- =======================================================
--- 2. GUI ZERO MANAGER
+-- 2. GIAO DIỆN (GUI) - CHỈNH SỬA THEO YÊU CẦU
 -- =======================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ZeroManagerGUI"
 ScreenGui.Parent = (gethui and gethui()) or CoreGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 300, 0, 100)
-MainFrame.Position = UDim2.new(0.5, -150, 0, 20)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.Size = UDim2.new(0, 280, 0, 90)
+MainFrame.Position = UDim2.new(0.5, -140, 0, 30)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 2
-MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 0)
+MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 0) -- Viền vàng
 MainFrame.Parent = ScreenGui
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0.5, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Zero Manager"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Chữ vàng
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 28
+TitleLabel.TextSize = 26
 TitleLabel.Parent = MainFrame
 
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, 0, 0.5, 0)
-StatusLabel.Position = UDim2.new(0, 0, 0.5, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Status: " .. ChestsCollected .. " / " .. MaxChests
-StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-StatusLabel.Font = Enum.Font.GothamSemibold
-StatusLabel.TextSize = 20
-StatusLabel.Parent = MainFrame
+local SubLabel = Instance.new("TextLabel")
+SubLabel.Size = UDim2.new(1, 0, 0.4, 0)
+SubLabel.Position = UDim2.new(0, 0, 0.5, 0)
+SubLabel.BackgroundTransparency = 1
+SubLabel.Text = "Auto Collect Chest"
+SubLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Chữ vàng
+SubLabel.Font = Enum.Font.GothamSemibold
+SubLabel.TextSize = 18
+SubLabel.Parent = MainFrame
 
 -- =======================================================
--- 3. LOGIC DỪNG KHI NHẬN ĐƯỢC ĐỒ (NEW)
+-- 3. LOGIC KIỂM TRA VẬT PHẨM QUÝ
 -- =======================================================
 local function OnItemAdded(item)
     if item:IsA("Tool") or item:IsA("SpecialItem") then
-        -- Danh sách các thứ bỏ qua (Vũ khí cơ bản)
         local ignoreList = {"Combat", "Sword", "Gun", "Fruit"}
         for _, name in pairs(ignoreList) do
             if item.Name:find(name) then return end
         end
         
-        -- Nếu nhận được item lạ (Chén thánh, Nắm đấm bóng tối, vật phẩm hiếm...)
+        -- Dừng toàn bộ nếu thấy item lạ
         StopByItem = true
-        FarmingConnection = false
-        StatusLabel.Text = "ITEM FOUND: " .. item.Name:upper()
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        warn("Dừng Farm vì đã tìm thấy vật phẩm: " .. item.Name)
+        SubLabel.Text = "ITEM FOUND: " .. item.Name:upper()
+        SubLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+        warn("FOUND RARE ITEM: " .. item.Name)
     end
 end
 
 LocalPlayer.Backpack.ChildAdded:Connect(OnItemAdded)
 
 -- =======================================================
--- 4. HÀM HỖ TRỢ & LOGIC GỐC
+-- 4. HÀM HỖ TRỢ (TELEPORT & SORT)
 -- =======================================================
 local function HopServer()
     if IsHopping or StopByItem then return end
     IsHopping = true
-    StatusLabel.Text = "Status: Hopping..."
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+    SubLabel.Text = "Server Hopping..."
     
     pcall(function()
         local url = "https://games.roblox.com/v1/games/" .. tostring(PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
@@ -114,14 +108,24 @@ local function getCharacter()
     return char
 end
 
-local function DistanceFromPlrSort(ObjectList)
+local function toggleNoclip(Toggle)
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("BasePart") then
+            v.CanCollide = not Toggle
+        end
+    end
+end
+
+local function Teleport(Goal)
     local char = getCharacter()
-    if not char:FindFirstChild("LowerTorso") then return end
-    local RootPos = char.LowerTorso.Position
-    
-    table.sort(ObjectList, function(ChestA, ChestB)
-        return (RootPos - ChestA.Position).Magnitude < (RootPos - ChestB.Position).Magnitude
-    end)
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        toggleNoclip(true)
+        char.HumanoidRootPart.CFrame = Goal + Vector3.new(0, 3, 0)
+        -- Tắt noclip nhanh sau khi tới để tránh lỗi vật lý
+        task.delay(0.05, function() toggleNoclip(false) end)
+    end
 end
 
 local UncheckedChests, FirstRun = {}, true
@@ -142,60 +146,52 @@ local function getChestsSorted()
         end
     end
     
-    pcall(function() DistanceFromPlrSort(Chests) end)
+    -- Sắp xếp theo khoảng cách
+    local char = getCharacter()
+    if char:FindFirstChild("LowerTorso") then
+        local RootPos = char.LowerTorso.Position
+        table.sort(Chests, function(a, b)
+            return (RootPos - a.Position).Magnitude < (RootPos - b.Position).Magnitude
+        end)
+    end
+    
     return Chests
 end
 
-local function toggleNoclip(Toggle)
-    local char = LocalPlayer.Character
-    if not char then return end
-    for _, v in pairs(char:GetChildren()) do
-        if v:IsA("BasePart") then
-            v.CanCollide = not Toggle
-        end
-    end
-end
-
-local function Teleport(Goal)
-    local char = getCharacter()
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        toggleNoclip(true)
-        char.HumanoidRootPart.CFrame = Goal + Vector3.new(0, 3, 0)
-        task.delay(0.1, function() toggleNoclip(false) end)
-    end
-end
-
 -- =======================================================
--- 5. VÒNG LẶP FARM CHÍNH (DỪNG KHI CÓ ĐỒ)
+-- 5. VÒNG LẶP CHÍNH (MAIN FARM)
 -- =======================================================
 local function startFarm()
-    if FarmingConnection then FarmingConnection = false end
-    if StopByItem then return end -- Không chạy nếu đã tìm thấy đồ
-    
-    FarmingConnection = true
-    
     task.spawn(function()
-        while FarmingConnection and task.wait() do
-            if IsHopping or StopByItem then break end
+        while not StopByItem and task.wait() do
+            if IsHopping then break end
             
             local Chests = getChestsSorted()
+            
             if #Chests > 0 then
                 local currentChest = Chests[1]
                 
-                if not CollectedRecords[currentChest] then
-                    CollectedRecords[currentChest] = true
-                    ChestsCollected = ChestsCollected + 1
-                    StatusLabel.Text = "Status: " .. ChestsCollected .. " / " .. MaxChests
-                    
-                    if ChestsCollected >= MaxChests then
-                        HopServer()
-                        break
+                -- Teleport tới rương
+                Teleport(currentChest.CFrame)
+                
+                -- Đợi một chút để script game nhận va chạm
+                task.wait(0.12) 
+                
+                -- Nếu rương biến mất (đã nhặt), tăng biến đếm
+                if not currentChest:FindFirstChild("TouchInterest") then
+                    if not CollectedRecords[currentChest] then
+                        CollectedRecords[currentChest] = true
+                        ChestsCollected = ChestsCollected + 1
                     end
                 end
 
-                Teleport(currentChest.CFrame)
-                task.wait(0.08)
+                -- Kiểm tra giới hạn Sea
+                if ChestsCollected >= MaxChests then
+                    HopServer()
+                    break
+                end
             else
+                -- Hết rương trong server này
                 HopServer()
                 break
             end
@@ -204,23 +200,24 @@ local function startFarm()
 end
 
 -- =======================================================
--- 6. KHỞI CHẠY & TỰ ĐỘNG CHỌN TEAM
+-- 6. TỰ ĐỘNG CHỌN TEAM & KHỞI CHẠY
 -- =======================================================
 task.spawn(function()
-    local rs = game:GetService("ReplicatedStorage")
     while task.wait(5) do
         if StopByItem then break end
         pcall(function()
-            rs.Remotes.CommF_:InvokeServer("SetTeam", "Marines")
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("SetTeam", "Marines")
         end)
     end
 end)
 
+-- Tự động chạy lại khi nhân vật reset
 LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
+    task.wait(1.5)
     if not StopByItem then
         startFarm()
     end
 end)
 
+-- Khởi động lần đầu
 startFarm()
