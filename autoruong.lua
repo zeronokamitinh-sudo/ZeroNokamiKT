@@ -7,15 +7,15 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- =======================================================
 -- 1. CẤU HÌNH CỐ ĐỊNH (70 RƯƠNG CHO TẤT CẢ SEA)
 -- =======================================================
-local PlaceId = game.PlaceId
-local MaxChests = 70 -- Cố định 70 rương theo yêu cầu của bạn
+local MaxChests = 70 
 local ChestsCollected = 0
 local CollectedRecords = {}
 local IsHopping = false
 local StopByItem = false 
+local PlaceId = game.PlaceId
 
 -- =======================================================
--- 2. GIAO DIỆN (GUI) - CHỈNH SỬA: XÓA STATUS
+-- 2. GIAO DIỆN (GUI) - GIỮ NGUYÊN STYLE VÀNG
 -- =======================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ZeroManagerGUI"
@@ -57,32 +57,79 @@ local function OnItemAdded(item)
         for _, name in pairs(ignoreList) do
             if item.Name:find(name) then return end
         end
-        
         StopByItem = true
         SubLabel.Text = "ITEM FOUND: " .. item.Name:upper()
         SubLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
     end
 end
-
 LocalPlayer.Backpack.ChildAdded:Connect(OnItemAdded)
 
 -- =======================================================
--- 4. HÀM HỖ TRỢ (TELEPORT & SORT)
+-- 4. TỐI ƯU HÓA QUÉT RƯƠNG (FIX LỖI GIỰT)
 -- =======================================================
+local UncheckedChests = {}
+local function InitialScan()
+    -- Chỉ quét Workspace thay vì toàn bộ game để cực nhanh
+    for _, Object in pairs(workspace:GetDescendants()) do
+        if Object.Name:find("Chest") and Object:IsA("BasePart") then
+            table.insert(UncheckedChests, Object)
+        end
+    end
+end
+
+-- Chạy quét ngay lập tức khi load script
+InitialScan()
+
+local function getChestsSorted()
+    local Chests = {}
+    for _, Chest in pairs(UncheckedChests) do
+        if Chest and Chest:FindFirstChild("TouchInterest") then
+            table.insert(Chests, Chest)
+        end
+    end
+    
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("LowerTorso")
+    if root then
+        table.sort(Chests, function(a, b)
+            return (root.Position - a.Position).Magnitude < (root.Position - b.Position).Magnitude
+        end)
+    end
+    return Chests
+end
+
+-- =======================================================
+-- 5. HÀM HỖ TRỢ
+-- =======================================================
+local function toggleNoclip(Toggle)
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("BasePart") then v.CanCollide = not Toggle end
+    end
+end
+
+local function Teleport(Goal)
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        toggleNoclip(true)
+        hrp.CFrame = Goal + Vector3.new(0, 3, 0)
+        task.delay(0.05, function() toggleNoclip(false) end)
+    end
+end
+
 local function HopServer()
     if IsHopping or StopByItem then return end
     IsHopping = true
     SubLabel.Text = "Server Hopping..."
-    
     pcall(function()
         local url = "https://games.roblox.com/v1/games/" .. tostring(PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
         local data = HttpService:JSONDecode(game:HttpGet(url))
-        if data and data.data then
-            for _, server in pairs(data.data) do
-                if server.id ~= game.JobId and server.playing < (server.maxPlayers - 1) then
-                    TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LocalPlayer)
-                    return
-                end
+        for _, server in pairs(data.data) do
+            if server.id ~= game.JobId and server.playing < (server.maxPlayers - 1) then
+                TeleportService:TeleportToPlaceInstance(PlaceId, server.id, LocalPlayer)
+                return
             end
         end
     end)
@@ -90,67 +137,13 @@ local function HopServer()
     IsHopping = false
 end
 
-local function getCharacter()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    char:WaitForChild("HumanoidRootPart", 5)
-    char:WaitForChild("LowerTorso", 5)
-    return char
-end
-
-local function toggleNoclip(Toggle)
-    local char = LocalPlayer.Character
-    if not char then return end
-    for _, v in pairs(char:GetChildren()) do
-        if v:IsA("BasePart") then
-            v.CanCollide = not Toggle
-        end
-    end
-end
-
-local function Teleport(Goal)
-    local char = getCharacter()
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        toggleNoclip(true)
-        char.HumanoidRootPart.CFrame = Goal + Vector3.new(0, 3, 0)
-        task.delay(0.05, function() toggleNoclip(false) end)
-    end
-end
-
-local UncheckedChests, FirstRun = {}, true
-local function getChestsSorted()
-    if FirstRun then
-        FirstRun = false
-        for _, Object in pairs(game:GetDescendants()) do
-            if Object.Name:find("Chest") and Object:IsA("BasePart") then
-                table.insert(UncheckedChests, Object)
-            end
-        end
-    end
-    
-    local Chests = {}
-    for _, Chest in pairs(UncheckedChests) do
-        if Chest:FindFirstChild("TouchInterest") then
-            table.insert(Chests, Chest)
-        end
-    end
-    
-    local char = getCharacter()
-    if char:FindFirstChild("LowerTorso") then
-        local RootPos = char.LowerTorso.Position
-        table.sort(Chests, function(a, b)
-            return (RootPos - a.Position).Magnitude < (RootPos - b.Position).Magnitude
-        end)
-    end
-    
-    return Chests
-end
-
 -- =======================================================
--- 5. VÒNG LẶP CHÍNH (GIỮ NGUYÊN LOGIC)
+-- 6. VÒNG LẶP CHÍNH (CHẠY NGAY LẬP TỨC)
 -- =======================================================
 local function startFarm()
     task.spawn(function()
-        while not StopByItem and task.wait() do
+        -- Không task.wait() ở đây để bắt đầu ngay
+        while not StopByItem do
             if IsHopping then break end
             
             local Chests = getChestsSorted()
@@ -158,6 +151,8 @@ local function startFarm()
             if #Chests > 0 then
                 local currentChest = Chests[1]
                 Teleport(currentChest.CFrame)
+                
+                -- Thời gian chờ tối ưu để nhặt
                 task.wait(0.12) 
                 
                 if not currentChest:FindFirstChild("TouchInterest") then
@@ -172,15 +167,17 @@ local function startFarm()
                     break
                 end
             else
+                task.wait(0.5) -- Đợi chút nếu rương chưa kịp xuất hiện trước khi hop
                 HopServer()
                 break
             end
+            task.wait() -- Tránh treo máy
         end
     end)
 end
 
 -- =======================================================
--- 6. TỰ ĐỘNG CHỌN TEAM & KHỞI CHẠY
+-- 7. TỰ ĐỘNG CHỌN TEAM & KHỞI CHẠY
 -- =======================================================
 task.spawn(function()
     while task.wait(5) do
@@ -192,10 +189,11 @@ task.spawn(function()
 end)
 
 LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1.5)
+    task.wait(0.5) -- Giảm thời gian chờ xuống tối thiểu
     if not StopByItem then
         startFarm()
     end
 end)
 
+-- Bật Farm ngay lập tức khi thực thi script
 startFarm()
