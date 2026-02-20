@@ -5,26 +5,17 @@ local CoreGui = game:GetService("CoreGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- =======================================================
--- 1. CẤU HÌNH SEA & GIỚI HẠN
+-- 1. CẤU HÌNH CỐ ĐỊNH (70 RƯƠNG CHO TẤT CẢ SEA)
 -- =======================================================
 local PlaceId = game.PlaceId
-local MaxChests = 40 
-
-if PlaceId == 7449423635 then
-    MaxChests = 80 -- Sea 3
-elseif PlaceId == 4442272183 then
-    MaxChests = 60 -- Sea 2
-elseif PlaceId == 2753915549 then
-    MaxChests = 40 -- Sea 1
-end
-
+local MaxChests = 70 -- Cố định 70 rương theo yêu cầu của bạn
 local ChestsCollected = 0
 local CollectedRecords = {}
 local IsHopping = false
 local StopByItem = false 
 
 -- =======================================================
--- 2. GIAO DIỆN (GUI) - CHỈNH SỬA THEO YÊU CẦU
+-- 2. GIAO DIỆN (GUI) - CHỈNH SỬA: XÓA STATUS
 -- =======================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ZeroManagerGUI"
@@ -35,14 +26,14 @@ MainFrame.Size = UDim2.new(0, 280, 0, 90)
 MainFrame.Position = UDim2.new(0.5, -140, 0, 30)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 MainFrame.BorderSizePixel = 2
-MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 0) -- Viền vàng
+MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 0)
 MainFrame.Parent = ScreenGui
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0.5, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Zero Manager"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Chữ vàng
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 26
 TitleLabel.Parent = MainFrame
@@ -52,13 +43,13 @@ SubLabel.Size = UDim2.new(1, 0, 0.4, 0)
 SubLabel.Position = UDim2.new(0, 0, 0.5, 0)
 SubLabel.BackgroundTransparency = 1
 SubLabel.Text = "Auto Collect Chest"
-SubLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Chữ vàng
+SubLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
 SubLabel.Font = Enum.Font.GothamSemibold
 SubLabel.TextSize = 18
 SubLabel.Parent = MainFrame
 
 -- =======================================================
--- 3. LOGIC KIỂM TRA VẬT PHẨM QUÝ
+-- 3. LOGIC KIỂM TRA VẬT PHẨM
 -- =======================================================
 local function OnItemAdded(item)
     if item:IsA("Tool") or item:IsA("SpecialItem") then
@@ -67,11 +58,9 @@ local function OnItemAdded(item)
             if item.Name:find(name) then return end
         end
         
-        -- Dừng toàn bộ nếu thấy item lạ
         StopByItem = true
         SubLabel.Text = "ITEM FOUND: " .. item.Name:upper()
         SubLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-        warn("FOUND RARE ITEM: " .. item.Name)
     end
 end
 
@@ -123,7 +112,6 @@ local function Teleport(Goal)
     if char and char:FindFirstChild("HumanoidRootPart") then
         toggleNoclip(true)
         char.HumanoidRootPart.CFrame = Goal + Vector3.new(0, 3, 0)
-        -- Tắt noclip nhanh sau khi tới để tránh lỗi vật lý
         task.delay(0.05, function() toggleNoclip(false) end)
     end
 end
@@ -146,7 +134,6 @@ local function getChestsSorted()
         end
     end
     
-    -- Sắp xếp theo khoảng cách
     local char = getCharacter()
     if char:FindFirstChild("LowerTorso") then
         local RootPos = char.LowerTorso.Position
@@ -159,7 +146,7 @@ local function getChestsSorted()
 end
 
 -- =======================================================
--- 5. VÒNG LẶP CHÍNH (MAIN FARM)
+-- 5. VÒNG LẶP CHÍNH (GIỮ NGUYÊN LOGIC)
 -- =======================================================
 local function startFarm()
     task.spawn(function()
@@ -170,14 +157,9 @@ local function startFarm()
             
             if #Chests > 0 then
                 local currentChest = Chests[1]
-                
-                -- Teleport tới rương
                 Teleport(currentChest.CFrame)
-                
-                -- Đợi một chút để script game nhận va chạm
                 task.wait(0.12) 
                 
-                -- Nếu rương biến mất (đã nhặt), tăng biến đếm
                 if not currentChest:FindFirstChild("TouchInterest") then
                     if not CollectedRecords[currentChest] then
                         CollectedRecords[currentChest] = true
@@ -185,13 +167,11 @@ local function startFarm()
                     end
                 end
 
-                -- Kiểm tra giới hạn Sea
                 if ChestsCollected >= MaxChests then
                     HopServer()
                     break
                 end
             else
-                -- Hết rương trong server này
                 HopServer()
                 break
             end
@@ -211,7 +191,6 @@ task.spawn(function()
     end
 end)
 
--- Tự động chạy lại khi nhân vật reset
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1.5)
     if not StopByItem then
@@ -219,5 +198,4 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
--- Khởi động lần đầu
 startFarm()
